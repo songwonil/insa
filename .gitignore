@@ -6,3 +6,5 @@ tmp/
 target/
 build/
 .git/
+*.env
+.env

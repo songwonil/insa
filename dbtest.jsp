@@ -1,16 +1,28 @@
 <%@ page language="java" contentType="application/json; charset=UTF-8" pageEncoding="UTF-8"%>
+<%@ page import="java.io.BufferedReader" %>
 <%@ page import="java.sql.*" %>
 <%@ page import="java.util.*" %>
+<%@ page import="io.github.cdimascio.dotenv.Dotenv" %>
+
+<%
+    // .env 파일 로드
+    String envPath = application.getRealPath("/WEB-INF");
+    
+    Dotenv dotenv = Dotenv.configure()
+                          .directory(envPath)
+                          .load();
+    
+    String dbUrl = dotenv.get("DB_URL");
+    String dbUser = dotenv.get("DB_USER");
+    String dbPassword = dotenv.get("DB_PASSWORD");
+
+    // 이후 Connection 연결 로직은 동일...
+%>
 <%
     // 응답 헤더 설정 (캐시 방지 및 JSON 명시)
     response.setHeader("Cache-Control", "no-cache");
     response.setHeader("Pragma", "no-cache");
     response.setDateHeader("Expires", 0);
-
-    // 데이터베이스 연결 정보
-    String dbUrl = "jdbc:mysql://140.245.76.64:3306/dlive_insa?serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true";
-    String dbUser = "insa";       // 본인의 MySQL 계정
-    String dbPassword = "insa"; // 본인의 MySQL 비밀번호
 
     Connection conn = null;
     PreparedStatement pstmt = null;
