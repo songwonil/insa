@@ -21,7 +21,7 @@
 
     if ("GET".equalsIgnoreCase(method)) {
         // GET 요청 처리: 단순한 테스트용 JSON 반환
-        jsonResponse = "{\"status\": \"success\", \"message\": \"안녕! 순수 JSP 파일(data.jsp)에서 보낸 GET! 데이터야123.\"}";
+        jsonResponse = "{\"status\": \"success\", \"message\": \"안녕! 순수 JSP 파일(data.jsp)에서 보낸 GET! 데이터야123.111\"}";
         
     } else if ("POST".equalsIgnoreCase(method)) {
         // POST 요청 처리: React가 보낸 JSON 바디 읽기
