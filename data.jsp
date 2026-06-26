@@ -76,12 +76,14 @@
                 String name = rs.getString("name");
                 String email = rs.getString("email");
 
-                // 특수문자 에스케이프 처리를 수동으로 할 때는 주의가 필요합니다.
-                // 여기서는 단순 출력을 위해 기본 문자열 포맷팅을 사용합니다.
+                String cleanName = (name != null) ? name.replace("\n", "").replace("\r", "") : "";
+                String cleanEmail = (email != null) ? email.replace("\n", "").replace("\r", "") : "";
+
                 jsonResult.append("{")
-                        .append("\"id\":").append(id).append(",")
-                        .append("\"name\":\"").append(name).append("\",")
-                        .append("\"email\":\"").append(email).append("\"")
+                        .append("\"id\":\"").append(id).append("\",")
+                        .append("\"name\":\"").append(cleanName).append("\",")
+                        .append("\"email\":\"").append(cleanEmail).append("\",")
+                        .append("\"abc\":\"125\"")
                         .append("}");
             }
             
