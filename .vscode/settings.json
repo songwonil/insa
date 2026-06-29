@@ -30,6 +30,9 @@
     },
     // VS Code 검색 결과에서 제외할 파일/폴더
     "search.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
         "**/node_modules": true,
         "**/bower_components": true,
         "**/*.code-search": true
