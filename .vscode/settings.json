@@ -1,11 +1,20 @@
 {
     // 서버 배포 시 제외할 파일 및 폴더 목록
     "server.publisher.excludes": [
+        "**/.git/**",
         "**/.git",
+        "**/.gitignore",
+        "**/.vscode/**",
         "**/.vscode",
         "**/node_modules",
         "**/.DS_Store"
     ],
+    "rsp.deploy.exclude": [
+    "**/.git/**",
+    "**/.git",
+    "**/.gitignore",
+    "**/.vscode/**"
+    ] ,
 
     // --- 아래는 권장 설정입니다 (탐색기 및 검색에서 불필요한 파일 숨기기) ---
 
@@ -24,5 +33,5 @@
         "**/node_modules": true,
         "**/bower_components": true,
         "**/*.code-search": true
-    }
+    },
 }
