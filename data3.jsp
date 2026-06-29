@@ -110,17 +110,62 @@
         
     } else if ("POST".equalsIgnoreCase(method)) {
         // POST 요청 처리: React가 보낸 JSON 바디 읽기
-        StringBuilder sb = new StringBuilder();
-        BufferedReader reader = request.getReader();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            sb.append(line);
-        }
-        String requestBody = sb.toString(); // React에서 보낸 JSON 데이터
+        Connection conn = null;
+        PreparedStatement pstmt = null;
 
-        // 받은 데이터를 그대로 포함해서 응답 데이터 작성
-        // (실제 개발 시에는 여기서 라이브러리를 쓰거나 DB 로직을 수행합니다)
-        jsonResponse = "{\"status\": \"success\", \"message\": \"JSP가 POST 데이터를 잘 받았어!\", \"receivedData\": " + requestBody + "}";
+        try {
+            // 1. React에서 보낸 JSON 데이터 읽기
+            StringBuilder sb = new StringBuilder();
+            BufferedReader reader = request.getReader();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            String requestBody = sb.toString();
+
+            // 2. JSON에서 userName 값 추출 (라이브러리 없이 간단하게 처리)
+            // 실제 프로덕션에서는 Gson, Jackson 등의 라이브러리 사용을 권장합니다.
+            String userName = null;
+            String userEmail = null;
+
+            if (requestBody != null && requestBody.contains("\"userName\"")) {
+                String[] parts = requestBody.split("\"userName\":\"");
+                if (parts.length > 1) {
+                    userName = parts[1].split("\"")[0];
+                }
+            }
+            if (requestBody != null && requestBody.contains("\"userEmail\"")) {
+                String[] parts = requestBody.split("\"userEmail\":\"");
+                if (parts.length > 1) {
+                    userEmail = parts[1].split("\"")[0];
+                }
+            }
+
+            if (userName == null || userName.trim().isEmpty() || userEmail == null || userEmail.trim().isEmpty()) {
+                throw new Exception("이름과 이메일 모두 유효하지 않습니다.");
+            }
+
+            // 3. 데이터베이스에 사용자 추가
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
+            String sql = "INSERT INTO users (name, email) VALUES (?, ?)";
+            pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, userName);
+            pstmt.setString(2, userEmail);
+            int result = pstmt.executeUpdate();
+
+            if (result > 0) {
+                jsonResponse = "{\"status\": \"success\", \"message\": \"사용자(" + userName + ", " + userEmail + ")가 성공적으로 추가되었습니다.\"}";
+            } else {
+                throw new Exception("사용자 추가에 실패했습니다.");
+            }
+        } catch (Exception e) {
+            jsonResponse = "{\"status\": \"error\", \"message\": \"" + e.getMessage().replace("\"", "\\\"") + "\"}";
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        } finally {
+            if (pstmt != null) try { pstmt.close(); } catch (SQLException e) {}
+            if (conn != null) try { conn.close(); } catch (SQLException e) {}
+        }
     }
 
     // 2. 최종 JSON 응답 출력
