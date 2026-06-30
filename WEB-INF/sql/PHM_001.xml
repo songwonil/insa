@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapper namespace="PHM_001">
+
+    <!-- 직원 검색 (동적 WHERE 조건은 JSP에서 추가) -->
+    <sql id="searchEmp"><![CDATA[
+        SELECT e.EMP_ID, e.EMP_NM,
+               COALESCE(o.ORG_NM,  e.ORG_CD) AS dept_nm,
+               COALESCE(xp.CD_NM,  e.POS_CD) AS position_nm,
+               CASE e.IN_OFFI_YN WHEN 'Y' THEN '1' ELSE '3' END AS work_status
+        FROM   PHM_EMP_C e
+        LEFT JOIN ORM_ORG_C o  ON e.ORG_CD = o.ORG_CD AND o.END_YMD  = '9999-12-31'
+        LEFT JOIN XFRMD2C   xp ON e.POS_CD  = xp.CD   AND xp.CD_KIND = 'PHM_POS_CD' AND xp.END_YMD = '9999-12-31'
+        WHERE 1=1
+    ]]></sql>
+
+    <!-- 단건 사원 조회 -->
+    <sql id="getEmp"><![CDATA[
+        SELECT e.EMP_ID, e.EMP_NO, e.EMP_NM, e.ENG_NM, e.CHI_NM, e.CTZ_NO,
+               e.SEX_CD, e.BIRTH_YMD, e.IN_OFFI_YN,
+               e.COMPANY_CD, e.ORG_CD, e.HIRE_YMD, e.ANNUAL_CAL_YMD,
+               e.POS_GRD_CD, e.POS_CD, e.DUTY_CD, e.JOB_CD, e.REPREDUTY_CD,
+               e.WORK_ORG_CD, e.FILE_NM,
+               COALESCE(o.ORG_NM,   e.ORG_CD)      AS dept_nm,
+               COALESCE(xco.CD_NM,  e.COMPANY_CD)  AS corp_nm,
+               COALESCE(xp.CD_NM,   e.POS_CD)      AS pos_label,
+               COALESCE(xd.CD_NM,   e.DUTY_CD)     AS duty_label,
+               COALESCE(wo.ORG_NM,  e.WORK_ORG_CD) AS work_so_nm
+        FROM   PHM_EMP_C e
+        LEFT JOIN ORM_ORG_C o   ON e.ORG_CD      = o.ORG_CD   AND o.END_YMD   = '9999-12-31'
+        LEFT JOIN XFRMD2C  xco  ON e.COMPANY_CD  = xco.CD     AND xco.CD_KIND = 'PHM_COMPANY_CD' AND xco.END_YMD = '9999-12-31'
+        LEFT JOIN XFRMD2C  xp   ON e.POS_CD      = xp.CD      AND xp.CD_KIND  = 'PHM_POS_CD'     AND xp.END_YMD = '9999-12-31'
+        LEFT JOIN XFRMD2C  xd   ON e.DUTY_CD     = xd.CD      AND xd.CD_KIND  = 'PHM_CALL_CD'    AND xd.END_YMD = '9999-12-31'
+        LEFT JOIN ORM_ORG_C wo  ON e.WORK_ORG_CD = wo.ORG_CD  AND wo.END_YMD  = '9999-12-31'
+        WHERE e.EMP_ID = ?
+    ]]></sql>
+
+    <!-- 사원 정보 저장 (UPSERT) -->
+    <sql id="saveEmp"><![CDATA[
+        INSERT INTO PHM_EMP_C
+          (EMP_ID, COMPANY_CD, EMP_NO, EMP_NM, ENG_NM, CHI_NM, CTZ_NO,
+           IN_OFFI_YN, SEX_CD, BIRTH_YMD, HIRE_YMD, ANNUAL_CAL_YMD,
+           POS_CD, DUTY_CD, JOB_CD, REPREDUTY_CD, WORK_ORG_CD, MOD_USER_ID, MOD_DATE)
+        VALUES (?, 'D001', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURDATE())
+        ON DUPLICATE KEY UPDATE
+          EMP_NM         = VALUES(EMP_NM),
+          ENG_NM         = VALUES(ENG_NM),
+          CHI_NM         = VALUES(CHI_NM),
+          CTZ_NO         = VALUES(CTZ_NO),
+          IN_OFFI_YN     = VALUES(IN_OFFI_YN),
+          SEX_CD         = VALUES(SEX_CD),
+          BIRTH_YMD      = VALUES(BIRTH_YMD),
+          HIRE_YMD       = VALUES(HIRE_YMD),
+          ANNUAL_CAL_YMD = VALUES(ANNUAL_CAL_YMD),
+          POS_CD         = VALUES(POS_CD),
+          DUTY_CD        = VALUES(DUTY_CD),
+          JOB_CD         = VALUES(JOB_CD),
+          REPREDUTY_CD   = VALUES(REPREDUTY_CD),
+          WORK_ORG_CD    = VALUES(WORK_ORG_CD),
+          MOD_USER_ID    = 1,
+          MOD_DATE       = CURDATE()
+    ]]></sql>
+
+    <!-- 발령 이력 (CTE + LAG 윈도우 함수로 이전 부서/직위 계산) -->
+    <sql id="getAppoint"><![CDATA[
+        WITH ordered AS (
+          SELECT h.*,
+            LAG(h.ORG_CD) OVER (PARTITION BY h.EMP_ID ORDER BY h.STA_YMD, h.CAM_HISTORY_ID) AS prev_org_cd,
+            LAG(h.POS_CD) OVER (PARTITION BY h.EMP_ID ORDER BY h.STA_YMD, h.CAM_HISTORY_ID) AS prev_pos_cd
+          FROM CAM_HISTORY_C h
+          WHERE h.EMP_ID = ?
+        )
+        SELECT o.CAM_HISTORY_ID, o.STA_YMD,
+               COALESCE(xt.CD_NM,    o.TYPE_CD)  AS appoint_type,
+               COALESCE(fo.ORG_NM,   '')          AS from_dept_nm,
+               COALESCE(to_o.ORG_NM, o.ORG_CD)   AS to_dept_nm,
+               COALESCE(fp.CD_NM,    '')          AS from_position,
+               COALESCE(tp.CD_NM,    o.POS_CD)    AS to_position,
+               COALESCE(o.NOTE,      '')           AS remark
+        FROM ordered o
+        LEFT JOIN ORM_ORG_C to_o ON o.ORG_CD      = to_o.ORG_CD AND to_o.END_YMD = '9999-12-31'
+        LEFT JOIN ORM_ORG_C fo   ON o.prev_org_cd = fo.ORG_CD   AND fo.END_YMD   = '9999-12-31'
+        LEFT JOIN XFRMD2C   xt   ON o.TYPE_CD     = xt.CD       AND xt.CD_KIND   = 'CAM_TYPE_CD' AND xt.END_YMD = '9999-12-31'
+        LEFT JOIN XFRMD2C   tp   ON o.POS_CD      = tp.CD       AND tp.CD_KIND   = 'PHM_POS_CD'  AND tp.END_YMD = '9999-12-31'
+        LEFT JOIN XFRMD2C   fp   ON o.prev_pos_cd = fp.CD       AND fp.CD_KIND   = 'PHM_POS_CD'  AND fp.END_YMD = '9999-12-31'
+        ORDER BY o.STA_YMD DESC
+    ]]></sql>
+
+</mapper>
