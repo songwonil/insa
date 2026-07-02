@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapper namespace="CAM_030">
+
+    <!--
+        INFORMATION_SCHEMA 기반 CAM_HISTORY_C 컬럼-코드분류 매핑 조회
+        COLUMN_COMMENT의 [CD_KIND] 패턴에서 코드분류(CD_KIND)를 추출합니다.
+
+        실행 예시:
+          SELECT COLUMN_NAME, COLUMN_COMMENT, cd_kind
+          FROM (<이 쿼리>) t
+          ORDER BY ORDINAL_POSITION;
+
+        결과 (현재 테이블 기준):
+          COLUMN_NAME    | COLUMN_COMMENT                          | cd_kind
+          ---------------+-----------------------------------------+-------------------
+          CAU_CD         | 발령사유코드 [CAM_CAU_CD]               | CAM_CAU_CD
+          COMPANY_CD     | 발령인사영역 [PHM_COMPANY_CD]           | PHM_COMPANY_CD
+          DIS_KIND_CD    | 파견구분 [CAM_DIS_KIND_CD]              | CAM_DIS_KIND_CD
+          DUTY_CD        | 발령직책 [PHM_CALL_CD]                  | PHM_CALL_CD
+          EMP_KIND_CD    | 발령직원구분 [PHM_EMP_KIND_CD]          | PHM_EMP_KIND_CD
+          HIRE_CD        | 채용구분코드_사용하지 않음 [PHM_HIRE_CD]| PHM_HIRE_CD
+          POS_CD         | 발령직위 [PHM_POS_CD]                   | PHM_POS_CD
+          POS_GRD_CD     | 발령직급 [PHM_POS_GRD_CD]              | PHM_POS_GRD_CD
+          REASON_CD      | 채용구분 [CAM_REASON_CD]                | CAM_REASON_CD
+          TYPE_CD        | 발령유형코드 [CAM_TYPE_CD]              | CAM_TYPE_CD
+    -->
+    <sql id="getColCdKindMap"><![CDATA[
+        SELECT
+            c.COLUMN_NAME,
+            c.COLUMN_COMMENT,
+            TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(c.COLUMN_COMMENT, '[', -1), ']', 1)) AS cd_kind
+        FROM INFORMATION_SCHEMA.COLUMNS c
+        WHERE c.TABLE_SCHEMA = DATABASE()
+          AND c.TABLE_NAME   = 'CAM_HISTORY_C'
+          AND c.COLUMN_COMMENT LIKE '%[%]%'
+        ORDER BY c.ORDINAL_POSITION
+    ]]></sql>
+
+    <!--
+        INFORMATION_SCHEMA 매핑 기반 코드 목록 일괄 조회
+        getColCdKindMap의 결과와 JOIN하여 코드명까지 한 번에 조회합니다.
+    -->
+    <sql id="getAllCodes"><![CDATA[
+        SELECT
+            c.COLUMN_NAME,
+            TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(c.COLUMN_COMMENT, '[', -1), ']', 1)) AS cd_kind,
+            x.CD,
+            x.CD_NM,
+            x.SHORT_NM,
+            x.ORD_NO
+        FROM INFORMATION_SCHEMA.COLUMNS c
+        JOIN XFRMD2C x
+            ON  x.CD_KIND = TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(c.COLUMN_COMMENT, '[', -1), ']', 1))
+            AND x.END_YMD = '9999-12-31'
+        WHERE c.TABLE_SCHEMA = DATABASE()
+          AND c.TABLE_NAME   = 'CAM_HISTORY_C'
+          AND c.COLUMN_COMMENT LIKE '%[%]%'
+        ORDER BY c.ORDINAL_POSITION, CAST(x.ORD_NO AS UNSIGNED)
+    ]]></sql>
+
+    <!--
+        발령 목록 조회 (기본 SQL)
+        - INFORMATION_SCHEMA.COLUMNS COMMENT의 [CD_KIND]를 기준으로 XFRMD2C LEFT JOIN
+        - 동적 WHERE 조건(부서, 유형, 사원명)은 JSP에서 추가
+        - 날짜 파라미터: ? = fromDt, ? = toDt
+    -->
+    <sql id="searchList"><![CDATA[
+        SELECT
+            h.CAM_HISTORY_ID, h.EMP_ID, h.STA_YMD, h.YEARNUM,
+            h.SEND_YN,
+            h.REST_YN,  h.REN_YMD,  h.BABY_YMD, h.CON_YMD,
+            h.DIS_YN,   h.DIS_RTN_YMD, h.DIS_ORG_CD,
+            h.DIS_POS_CD, h.DIS_DUTY_CD, h.DIS_POS_GRD_CD,
+            h.JOB_CD,   h.NOTE,     h.OUT_NOTE,
+            /* 코드 원값 */
+            h.TYPE_CD,  h.CAU_CD,   h.COMPANY_CD,  h.ORG_CD,
+            h.POS_CD,   h.POS_GRD_CD, h.DUTY_CD,   h.EMP_KIND_CD,
+            h.DIS_KIND_CD, h.HIRE_CD, h.REASON_CD,
+            /* COLUMN_COMMENT [CAM_TYPE_CD]  */
+            COALESCE(xt.CD_NM,   h.TYPE_CD)     AS type_nm,
+            /* COLUMN_COMMENT [CAM_CAU_CD]   */
+            COALESCE(xc.CD_NM,   h.CAU_CD)      AS cau_nm,
+            /* COLUMN_COMMENT [PHM_COMPANY_CD] */
+            COALESCE(xco.CD_NM,  h.COMPANY_CD)  AS company_nm,
+            /* ORG_CD → ORM_ORG_C (COMMENT에 CD_KIND 없음, 별도 조직 테이블) */
+            COALESCE(o.ORG_NM,   h.ORG_CD)      AS org_nm,
+            /* COLUMN_COMMENT [PHM_POS_CD]   */
+            COALESCE(xp.CD_NM,   h.POS_CD)      AS pos_nm,
+            /* COLUMN_COMMENT [PHM_POS_GRD_CD] */
+            COALESCE(xpg.CD_NM,  h.POS_GRD_CD)  AS pos_grd_nm,
+            /* COLUMN_COMMENT [PHM_CALL_CD]  */
+            COALESCE(xd.CD_NM,   h.DUTY_CD)     AS duty_nm,
+            /* COLUMN_COMMENT [PHM_JOB_CD]   */
+            COALESCE(xj.CD_NM,   h.JOB_CD)      AS job_nm,
+            /* COLUMN_COMMENT [PHM_EMP_KIND_CD] */
+            COALESCE(xek.CD_NM,  h.EMP_KIND_CD) AS emp_kind_nm,
+            /* COLUMN_COMMENT [CAM_DIS_KIND_CD] */
+            COALESCE(xdk.CD_NM,  h.DIS_KIND_CD) AS dis_kind_nm,
+            /* COLUMN_COMMENT [PHM_HIRE_CD]  */
+            COALESCE(xhr.CD_NM,  h.HIRE_CD)     AS hire_nm,
+            /* COLUMN_COMMENT [CAM_REASON_CD] */
+            COALESCE(xrs.CD_NM,  h.REASON_CD)   AS reason_nm,
+            /* 사원 정보 */
+            e.EMP_NO, e.EMP_NM, e.CTZ_NO,
+            COALESCE(wo.ORG_NM, e.WORK_ORG_CD)  AS work_so_nm
+        FROM CAM_HISTORY_C h
+        JOIN   PHM_EMP_C   e   ON h.EMP_ID      = e.EMP_ID
+        LEFT JOIN ORM_ORG_C o  ON h.ORG_CD      = o.ORG_CD      AND o.END_YMD  = '9999-12-31'
+        LEFT JOIN ORM_ORG_C wo ON e.WORK_ORG_CD = wo.ORG_CD     AND wo.END_YMD = '9999-12-31'
+        /* ── INFORMATION_SCHEMA COLUMN_COMMENT [CD_KIND] 기반 XFRMD2C 조인 ── */
+        LEFT JOIN XFRMD2C xt   ON h.TYPE_CD     = xt.CD  AND xt.CD_KIND  = 'CAM_TYPE_CD'     AND xt.END_YMD  = '9999-12-31'
+        LEFT JOIN XFRMD2C xc   ON h.CAU_CD      = xc.CD  AND xc.CD_KIND  = 'CAM_CAU_CD'      AND xc.END_YMD  = '9999-12-31'
+        LEFT JOIN XFRMD2C xco  ON h.COMPANY_CD  = xco.CD AND xco.CD_KIND = 'PHM_COMPANY_CD'  AND xco.END_YMD = '9999-12-31'
+        LEFT JOIN XFRMD2C xp   ON h.POS_CD      = xp.CD  AND xp.CD_KIND  = 'PHM_POS_CD'      AND xp.END_YMD  = '9999-12-31'
+        LEFT JOIN XFRMD2C xpg  ON h.POS_GRD_CD  = xpg.CD AND xpg.CD_KIND = 'PHM_POS_GRD_CD' AND xpg.END_YMD = '9999-12-31'
+        LEFT JOIN XFRMD2C xd   ON h.DUTY_CD     = xd.CD  AND xd.CD_KIND  = 'PHM_CALL_CD'     AND xd.END_YMD  = '9999-12-31'
+        LEFT JOIN XFRMD2C xj   ON h.JOB_CD      = xj.CD  AND xj.CD_KIND  = 'PHM_JOB_CD'      AND xj.END_YMD  = '9999-12-31'
+        LEFT JOIN XFRMD2C xek  ON h.EMP_KIND_CD = xek.CD AND xek.CD_KIND = 'PHM_EMP_KIND_CD' AND xek.END_YMD = '9999-12-31'
+        LEFT JOIN XFRMD2C xdk  ON h.DIS_KIND_CD = xdk.CD AND xdk.CD_KIND = 'CAM_DIS_KIND_CD' AND xdk.END_YMD = '9999-12-31'
+        LEFT JOIN XFRMD2C xhr  ON h.HIRE_CD     = xhr.CD  AND xhr.CD_KIND = 'PHM_HIRE_CD'     AND xhr.END_YMD = '9999-12-31'
+        LEFT JOIN XFRMD2C xrs  ON h.REASON_CD   = xrs.CD  AND xrs.CD_KIND = 'CAM_REASON_CD'  AND xrs.END_YMD = '9999-12-31'
+        WHERE h.STA_YMD BETWEEN ? AND ?
+    ]]></sql>
+
+</mapper>
